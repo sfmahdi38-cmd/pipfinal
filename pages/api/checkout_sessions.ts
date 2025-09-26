@@ -1,44 +1,52 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import Stripe from 'stripe';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
-});
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method === 'POST') {
-    try {
-      const { lang } = req.body;
-      const locale = lang === 'fa' ? 'auto' : 'en';
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            price_data: {
-              currency: 'gbp',
-              product_data: {
-                name: 'PIP Assist Full Answers',
-                description: 'One-time payment for full access to all form assistants.',
-              },
-              unit_amount: 1999, // 19.99 GBP in pence
-            },
-            quantity: 1,
-          },
-        ],
-        mode: 'payment',
-        success_url: `${process.env.NEXT_PUBLIC_APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/cancel`,
-        locale: locale
-      });
-
-      res.status(200).json({ sessionId: session.id });
-    } catch (err: any) {
-      console.error('Stripe Error:', err.message);
-      res.status(500).json({ error: { message: err.message } });
+// --- Stripe Checkout (Express version) ---
+app.post('/api/checkout_sessions', async (req, res) => {
+  try {
+    const Stripe = (await import('stripe')).default;
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) {
+      return res.status(501).json({ error: { message: 'Stripe is not configured' } });
     }
-  } else {
-    res.setHeader('Allow', 'POST');
-    res.status(405).end('Method Not Allowed');
+    const stripe = new Stripe(secret, { apiVersion: '2024-06-20' });
+
+    const { lang } = (req.body ?? {}) as { lang?: 'fa' | 'en' };
+    const locale: Stripe.Checkout.SessionCreateParams.Locale | undefined =
+      lang === 'fa' ? 'auto' : 'en';
+
+    // Build base URL from env (preferred) or headers
+    const base =
+      (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.replace(/\/+$/, '')) ||
+      `${(req.headers['x-forwarded-proto'] as string) || 'https'}://${req.headers.host}`;
+
+    const session = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'gbp',
+            product_data: {
+              name: 'PIP Assist Full Answers',
+              description: 'One-time payment for full access to all form assistants.'
+            },
+            unit_amount: 1999 // £19.99
+          },
+          quantity: 1
+        }
+      ],
+      // Option A: success/cancel pages (recommended; you already added /success & /cancel)
+      success_url: `${base}/success`,
+      cancel_url: `${base}/cancel`,
+
+      // Option B (alternative): use query flags instead of pages
+      // success_url: `${base}/?paid=true`,
+      // cancel_url: `${base}/?canceled=true`,
+
+      locale
+    });
+
+    return res.status(200).json({ sessionId: session.id });
+  } catch (err: any) {
+    console.error('Stripe Error:', err?.message || err);
+    return res.status(500).json({ error: { message: err?.message || 'server error' } });
   }
-}
+});
