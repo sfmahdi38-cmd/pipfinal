@@ -1,6 +1,6 @@
 import React, { useState, useRef, ChangeEvent, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { GoogleGenAI } from "@google/genai";
+
 import { loadStripe } from '@stripe/stripe-js';
 
 // --- FORM CHECKER TYPES ---
